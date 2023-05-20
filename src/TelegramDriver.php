@@ -3,6 +3,8 @@
 namespace BotMan\Drivers\Telegram;
 
 use BotMan\Drivers\Telegram\Exceptions\TelegramConnectionException;
+use BotMan\Drivers\Telegram\Http\MultipartCurl;
+use CURLFile;
 use Illuminate\Support\Collection;
 use BotMan\BotMan\Drivers\HttpDriver;
 use BotMan\BotMan\Messages\Incoming\Answer;
@@ -43,6 +45,9 @@ class TelegramDriver extends HttpDriver
     /** @var Collection */
     protected $queryParameters;
 
+    protected $uploadAsFile = false;
+
+
     /**
      * @param Request $request
      */
@@ -61,6 +66,7 @@ class TelegramDriver extends HttpDriver
         $this->event = Collection::make($message);
         $this->config = Collection::make($this->config->get('telegram'));
         $this->queryParameters = Collection::make($request->query);
+        $this->uploadAsFile = $this->config->get("uploadAsFiles");
     }
 
     /**
@@ -353,24 +359,30 @@ class TelegramDriver extends HttpDriver
                 if ($attachment instanceof Image) {
                     if (strtolower(pathinfo($attachment->getUrl(), PATHINFO_EXTENSION)) === 'gif') {
                         $this->endpoint = 'sendDocument';
-                        $parameters['document'] = $attachment->getUrl();
+                        $parameters['document'] =
+                            $this->uploadAsFile ? new CURLFile($attachment->getUrl()) : $attachment->getUrl();
                     } else {
                         $this->endpoint = 'sendPhoto';
-                        $parameters['photo'] = $attachment->getUrl();
+                        $parameters['photo'] =
+                            $this->uploadAsFile ? new CURLFile($attachment->getUrl()) : $attachment->getUrl();
                     }
                     // If has a title, overwrite the caption
                     if ($attachment->getTitle() !== null) {
-                        $parameters['caption'] = $attachment->getTitle();
+                        $parameters['caption'] =
+                            $this->uploadAsFile ? new CURLFile($attachment->getUrl()) : $attachment->getTitle();
                     }
                 } elseif ($attachment instanceof Video) {
                     $this->endpoint = 'sendVideo';
-                    $parameters['video'] = $attachment->getUrl();
+                    $parameters['video'] =
+                        $this->uploadAsFile ? new CURLFile($attachment->getUrl()) : $attachment->getUrl();
                 } elseif ($attachment instanceof Audio) {
                     $this->endpoint = 'sendAudio';
-                    $parameters['audio'] = $attachment->getUrl();
+                    $parameters['audio'] =
+                        $this->uploadAsFile ? new CURLFile($attachment->getUrl()) : $attachment->getUrl();
                 } elseif ($attachment instanceof File) {
                     $this->endpoint = 'sendDocument';
-                    $parameters['document'] = $attachment->getUrl();
+                    $parameters['document'] =
+                        $this->uploadAsFile ? new CURLFile($attachment->getUrl()) : $attachment->getUrl();
                 } elseif ($attachment instanceof Location) {
                     $this->endpoint = 'sendLocation';
                     $parameters['latitude'] = $attachment->getLatitude();
@@ -407,7 +419,9 @@ class TelegramDriver extends HttpDriver
         if ($this->config->get('throw_http_exceptions')) {
             return $this->postWithExceptionHandling($this->buildApiUrl($this->endpoint), [], $payload);
         }
-        return $this->http->post($this->buildApiUrl($this->endpoint), [], $payload);
+        return !$this->uploadAsFile ?
+            $this->http->post($this->buildApiUrl($this->endpoint), [], $payload) :
+            (new MultipartCurl())->post($this->buildApiUrl($this->endpoint), [], $payload);
     }
 
     /**
@@ -435,7 +449,9 @@ class TelegramDriver extends HttpDriver
         if ($this->config->get('throw_http_exceptions')) {
             return $this->postWithExceptionHandling($this->buildApiUrl($endpoint), [], $parameters);
         }
-        return $this->http->post($this->buildApiUrl($endpoint), [], $parameters);
+        return !$this->uploadAsFile ?
+            $this->http->post($this->buildApiUrl($endpoint), [], $parameters) :
+            (new MultipartCurl())->post($this->buildApiUrl($endpoint), [], $parameters);
     }
 
     /**
@@ -478,7 +494,9 @@ class TelegramDriver extends HttpDriver
         $asJSON = false,
         int $retryCount = 0
     ) {
-        $response = $this->http->post($url, $urlParameters, $postParameters, $headers, $asJSON);
+        $response = !$this->uploadAsFile ?
+            $this->http->post($url, $urlParameters, $postParameters, $headers, $asJSON) :
+            (new MultipartCurl())->post($url, $urlParameters, $postParameters, $headers, $asJSON);
         $responseData = json_decode($response->getContent(), true);
         if ($response->isOk() && isset($responseData['ok']) && true ===  $responseData['ok']) {
             return $response;

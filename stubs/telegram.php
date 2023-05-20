@@ -12,4 +12,5 @@ return [
     |
     */
     'token' => env('TELEGRAM_TOKEN'),
+    'uploadAsFiles' => env('TELEGRAM_UPLOAD_FILES', false)
 ];
